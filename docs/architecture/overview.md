@@ -17,7 +17,7 @@ src/
     api/files/route.ts                 PUT upload (raw body)
     api/files/[id]/download/route.ts   GET download
     api/health/route.ts                readiness: 200 or 503, no detail
-  server/                       server-only; every file starts with import "server-only"
+  server/                       server-only; every file imports "server-only" (except db/schema.ts, which drizzle-kit loads)
     db/        client.ts  schema.ts  migrations/
     auth/      password.ts  session.ts  current-user.ts  service.ts
     files/     policy.ts  service.ts  upload.ts

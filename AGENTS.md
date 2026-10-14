@@ -52,10 +52,10 @@ Route handlers and Server Actions never touch the database or storage directly.
 4. **Narrate:** comment the code per `docs/workflow/narration.md`.
 
 ## Commands (created in docs/modules/01-setup.md; update this list when scripts change)
-- `docker compose up -d` — start PostgreSQL
+- `docker compose up -d --wait` — start PostgreSQL (host port 5433; set `POSTGRES_PORT` to change)
 - `npm run dev` — dev server
 - `npm run db:generate` / `npm run db:migrate` — migrations
-- `npm run db:seed` — first admin from env vars
+- `npm run db:seed` — first admin from env vars (added in module 02)
 - `npm run lint` · `npm run typecheck` · `npm test` · `npm run test:e2e`
 
 ## Hard limits
