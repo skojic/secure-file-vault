@@ -4,7 +4,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { db } from "@/server/db/client";
 import { users } from "@/server/db/schema";
 import { ConflictError, KeyMismatchError } from "@/server/errors";
-import { claimKey, completeKey, releaseKey, requestHash, withIdempotency } from "@/server/idempotency";
+import { type Claim, claimKey, completeKey, releaseKey, requestHash, withIdempotency } from "@/server/idempotency";
 import { resetTables } from "../setup/reset";
 
 const base = (key = randomUUID()) => ({
@@ -15,13 +15,19 @@ const base = (key = randomUUID()) => ({
   staleAfterSeconds: 60,
 });
 
+const runToken = (claim: Claim) => {
+  if (claim.kind !== "run") throw new Error(`expected a run claim, got ${claim.kind}`);
+  return claim.token;
+};
+
 describe("idempotency keys (rule 26)", () => {
   beforeEach(resetTables);
 
   it("E20: a new key runs; a completed key replays the stored result", async () => {
     const claim = base();
-    expect(await claimKey(claim)).toEqual({ kind: "run" });
-    await completeKey(claim.key, { status: 201, body: { id: "abc" } });
+    const won = await claimKey(claim);
+    expect(won).toEqual({ kind: "run", token: expect.any(String) });
+    await completeKey(claim.key, runToken(won), { status: 201, body: { id: "abc" } });
     expect(await claimKey(claim)).toEqual({ kind: "replay", result: { status: 201, body: { id: "abc" } } });
   });
 
@@ -38,13 +44,12 @@ describe("idempotency keys (rule 26)", () => {
     const claim = base();
     await claimKey(claim);
     await db.execute(sql`UPDATE idempotency_keys SET created_at = now() - interval '2 minutes' WHERE key = ${claim.key}`);
-    expect(await claimKey(claim)).toEqual({ kind: "run" });
+    expect(await claimKey(claim)).toEqual({ kind: "run", token: expect.any(String) });
   });
 
   it("E21: the same key for a different request, route or user is 422", async () => {
     const claim = base();
-    await claimKey(claim);
-    await completeKey(claim.key, { status: 201, body: {} });
+    await completeKey(claim.key, runToken(await claimKey(claim)), { status: 201, body: {} });
     await expect(claimKey({ ...claim, requestHash: requestHash("test.route", { a: 2 }) })).rejects.toBeInstanceOf(KeyMismatchError);
     await expect(claimKey({ ...claim, route: "other.route" })).rejects.toBeInstanceOf(KeyMismatchError);
 
@@ -54,12 +59,12 @@ describe("idempotency keys (rule 26)", () => {
 
   it("a released key can run again; an expired key is reclaimed", async () => {
     const claim = base();
-    await claimKey(claim);
-    await releaseKey(claim.key);
-    expect(await claimKey(claim)).toEqual({ kind: "run" });
-    await completeKey(claim.key, { status: 200, body: {} });
+    await releaseKey(claim.key, runToken(await claimKey(claim)));
+    const again = await claimKey(claim);
+    expect(again.kind).toBe("run");
+    expect(await completeKey(claim.key, runToken(again), { status: 200, body: {} })).toBe(true);
     await db.execute(sql`UPDATE idempotency_keys SET expires_at = now() - interval '1 second' WHERE key = ${claim.key}`);
-    expect(await claimKey(claim)).toEqual({ kind: "run" });
+    expect((await claimKey(claim)).kind).toBe("run");
   });
 
   it("withIdempotency runs the effect once, replays it, and releases the key when the effect fails", async () => {
@@ -72,7 +77,39 @@ describe("idempotency keys (rule 26)", () => {
 
     const failing = base();
     await expect(withIdempotency(failing, async () => { throw new Error("boom"); })).rejects.toThrow("boom");
-    expect(await claimKey(failing)).toEqual({ kind: "run" });
+    expect((await claimKey(failing)).kind).toBe("run");
+  });
+
+  const takeOverDuring = (claim: ReturnType<typeof base>) => async () => {
+    await db.execute(sql`UPDATE idempotency_keys SET created_at = now() - interval '2 minutes' WHERE key = ${claim.key}`);
+    expect((await claimKey(claim)).kind).toBe("run");
+  };
+
+  it("E20: a stale attempt that fails late does not release the attempt that took over", async () => {
+    const claim = base();
+    const takeOver = takeOverDuring(claim);
+    await expect(withIdempotency(claim, async () => { await takeOver(); throw new Error("late failure"); })).rejects.toThrow("late failure");
+    // B still holds the key, so a third request is told to wait, not allowed to run a second effect.
+    await expect(claimKey(claim)).rejects.toBeInstanceOf(ConflictError);
+  });
+
+  it("a release or completion with a token from a superseded attempt changes nothing", async () => {
+    const claim = base();
+    const first = runToken(await claimKey(claim));
+    await db.execute(sql`UPDATE idempotency_keys SET created_at = now() - interval '2 minutes' WHERE key = ${claim.key}`);
+    const second = runToken(await claimKey(claim));
+    expect(second).not.toBe(first);
+    await releaseKey(claim.key, first);
+    expect(await completeKey(claim.key, first, { status: 201, body: { from: "A" } })).toBe(false);
+    expect(await completeKey(claim.key, second, { status: 201, body: { from: "B" } })).toBe(true);
+    expect(await claimKey(claim)).toEqual({ kind: "replay", result: { status: 201, body: { from: "B" } } });
+  });
+
+  it("E20: a stale attempt that finishes late does not complete the attempt that took over", async () => {
+    const claim = base();
+    const takeOver = takeOverDuring(claim);
+    await withIdempotency(claim, async () => { await takeOver(); return { status: 201, body: { from: "A" } }; });
+    await expect(claimKey(claim)).rejects.toBeInstanceOf(ConflictError);
   });
 
   it("the request hash ignores key order but not values", () => {

@@ -14,6 +14,7 @@ import { db } from "@/server/db/client";
 import { files } from "@/server/db/schema";
 import {
   AppError,
+  ConflictError,
   DependencyUnavailableError,
   PayloadTooLargeError,
   QuotaExceededError,
@@ -165,10 +166,12 @@ export async function uploadFile(user: CurrentUser, req: UploadRequest, deps: Up
       const signal = req.signal ? AbortSignal.any([req.signal, timeout.signal]) : timeout.signal;
       try {
         await storage.put(storageKey, req.body.pipeThrough(inspector.stream), signal);
-        await db
+        const marked = await db
           .update(files)
           .set({ status: "ready", sizeBytes: inspector.count, contentType: inspector.contentType!, updatedAt: sql`now()` })
-          .where(and(eq(files.id, fileId), eq(files.status, "pending")));
+          .where(and(eq(files.id, fileId), eq(files.status, "pending")))
+          .returning({ id: files.id });
+        if (marked.length === 0) throw new ConflictError("stale");
       } catch (err) {
         await storage.delete(storageKey).catch((e: unknown) => log.error("upload.cleanup.blob_failed", { err: e, fileId }));
         await db.delete(files).where(eq(files.id, fileId)).catch((e: unknown) => log.error("upload.cleanup.row_failed", { err: e, fileId }));
@@ -184,12 +187,21 @@ export async function uploadFile(user: CurrentUser, req: UploadRequest, deps: Up
 }
 
 // Deletes rows still pending after `olderThanSeconds`, and their bytes (F1). Run on a schedule:
-// `npm run files:sweep`.
-export async function sweepStalePending(storage: StorageProvider, olderThanSeconds: number): Promise<number> {
+// `npm run files:sweep`. Returns how many rows were removed and how many of their blobs could not be deleted.
+export async function sweepStalePending(storage: StorageProvider, olderThanSeconds: number): Promise<{ removed: number; blobsFailed: number }> {
   const stale = await db
     .delete(files)
     .where(and(eq(files.status, "pending"), sql`${files.createdAt} <= now() - make_interval(secs => ${olderThanSeconds})`))
     .returning({ storageKey: files.storageKey });
-  for (const { storageKey } of stale) await storage.delete(storageKey);
-  return stale.length;
+  // WHY: the storage key is a server-generated UUID, not user data, so it is safe to log and lets an operator remove the blob.
+  let blobsFailed = 0;
+  for (const { storageKey } of stale) {
+    try {
+      await storage.delete(storageKey);
+    } catch (err) {
+      blobsFailed++;
+      log.error("files.sweep.blob_failed", { err, storageKey });
+    }
+  }
+  return { removed: stale.length, blobsFailed };
 }

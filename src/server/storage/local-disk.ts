@@ -38,7 +38,10 @@ export class LocalDiskStorage implements StorageProvider {
     const { final } = this.paths(key);
     try {
       const handle = await open(final, "r");
-      const { size } = await handle.stat();
+      const { size } = await handle.stat().catch(async (err: unknown) => {
+        await handle.close().catch(() => undefined);
+        throw err;
+      });
       const nodeStream = handle.createReadStream();
       return { size, stream: Readable.toWeb(nodeStream) as ReadableStream<Uint8Array> };
     } catch (err) {

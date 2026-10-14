@@ -1,6 +1,8 @@
 // Structured JSON logs with redaction (rule 23). Anything whose key looks sensitive is replaced
 // before it is serialised, at any depth.
 import "server-only";
+import { DrizzleQueryError } from "drizzle-orm";
+import { DatabaseError } from "pg";
 
 const SENSITIVE = /pass(word)?|cookie|authori[sz]ation|token|secret|session|^body$|api[-_]?key/i;
 const MAX_DEPTH = 6;
@@ -12,6 +14,12 @@ export function redact(value: unknown, depth = 0, seen = new WeakSet<object>()):
   seen.add(value);
 
   // Errors log a fixed allow-list. Driver errors carry whole client objects as properties.
+  if (value instanceof DatabaseError) {
+    return { name: "DatabaseError", ...(value.code ? { code: value.code } : {}), ...(value.constraint ? { constraint: value.constraint } : {}) };
+  }
+  if (value instanceof DrizzleQueryError) {
+    return { name: "DrizzleQueryError", ...(value.cause !== undefined ? { cause: redact(value.cause, depth + 1, seen) } : {}) };
+  }
   if (value instanceof Error) {
     const { code, cause } = value as Error & { code?: unknown };
     return {

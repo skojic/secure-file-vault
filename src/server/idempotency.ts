@@ -10,7 +10,7 @@ import { ConflictError, KeyMismatchError } from "@/server/errors";
 import { log } from "@/server/log";
 
 export type StoredResult = { status: number; body: unknown };
-export type Claim = { kind: "run" } | { kind: "replay"; result: StoredResult };
+export type Claim = { kind: "run"; token: string } | { kind: "replay"; result: StoredResult };
 
 export type ClaimInput = {
   key: string;
@@ -20,6 +20,9 @@ export type ClaimInput = {
   // How long a claim may stay in progress before it counts as abandoned and can be reclaimed.
   staleAfterSeconds: number;
 };
+
+const attemptToken = sql<string>`${idempotencyKeys.createdAt}::text`;
+const ownedBy = (key: string, token: string) => and(eq(idempotencyKeys.key, key), sql`${idempotencyKeys.createdAt} = ${token}::timestamptz`);
 
 const RETRY_AFTER_SECONDS = 2;
 
@@ -48,8 +51,8 @@ export async function claimKey(input: ClaimInput, attempt = 0): Promise<Claim> {
       expiresAt: sql`now() + interval '24 hours'`,
     })
     .onConflictDoNothing()
-    .returning({ key: idempotencyKeys.key });
-  if (inserted.length > 0) return { kind: "run" };
+    .returning({ token: attemptToken });
+  if (inserted.length > 0) return { kind: "run", token: inserted[0].token };
 
   const [row] = await db
     .select({
@@ -90,21 +93,24 @@ export async function claimKey(input: ClaimInput, attempt = 0): Promise<Claim> {
         sql`${idempotencyKeys.createdAt} <= now() - make_interval(secs => ${input.staleAfterSeconds})`,
       ),
     )
-    .returning({ key: idempotencyKeys.key });
-  if (reclaimed.length > 0) return { kind: "run" };
+    .returning({ token: attemptToken });
+  if (reclaimed.length > 0) return { kind: "run", token: reclaimed[0].token };
   throw new ConflictError("in_progress", RETRY_AFTER_SECONDS);
 }
 
-export async function completeKey(key: string, result: StoredResult): Promise<void> {
-  await db
+// Marks the key done and stores the answer, only if this attempt still holds it. Returns false otherwise.
+export async function completeKey(key: string, token: string, result: StoredResult): Promise<boolean> {
+  const updated = await db
     .update(idempotencyKeys)
     .set({ state: "completed", responseStatus: result.status, responseBody: result.body })
-    .where(eq(idempotencyKeys.key, key));
+    .where(ownedBy(key, token))
+    .returning({ key: idempotencyKeys.key });
+  return updated.length > 0;
 }
 
-// Frees a key whose effect failed, so the same key can retry.
-export async function releaseKey(key: string): Promise<void> {
-  await db.delete(idempotencyKeys).where(and(eq(idempotencyKeys.key, key), eq(idempotencyKeys.state, "in_progress")));
+// Frees a key whose effect failed, so the same key can retry. Only the attempt holding the token can free it.
+export async function releaseKey(key: string, token: string): Promise<void> {
+  await db.delete(idempotencyKeys).where(and(ownedBy(key, token), eq(idempotencyKeys.state, "in_progress")));
 }
 
 export async function purgeExpiredKeys(): Promise<void> {
@@ -120,10 +126,10 @@ export async function withIdempotency(
   if (outcome.kind === "replay") return { ...outcome.result, replayed: true };
   try {
     const result = await effect();
-    await completeKey(claim.key, result);
+    if (!(await completeKey(claim.key, outcome.token, result))) log.warn("idempotency.claim_lost", { route: claim.route });
     return { ...result, replayed: false };
   } catch (err) {
-    await releaseKey(claim.key).catch((releaseErr: unknown) => log.error("idempotency.release_failed", { err: releaseErr }));
+    await releaseKey(claim.key, outcome.token).catch((releaseErr: unknown) => log.error("idempotency.release_failed", { err: releaseErr }));
     throw err;
   }
 }

@@ -140,6 +140,47 @@ describe("upload", () => {
     await expectNothingStored();
   });
 
+  it("F1: if the pending row is gone when marking it ready, the upload fails and removes its blob", async () => {
+    const real = storage();
+    const sweptMidway: StorageProvider = {
+      put: async (key, stream, signal) => {
+        await real.put(key, stream, signal);
+        await db.delete(files);
+      },
+      delete: (key) => real.delete(key),
+      open: (key) => real.open(key),
+      checkWritable: () => real.checkWritable(),
+    };
+    await expect(upload(pngBytes(3000), "photo.png", { storage: sweptMidway })).rejects.toBeInstanceOf(ConflictError);
+    await expectNothingStored();
+  });
+
+  it("F1: one blob that fails to delete does not stop the sweep; a missing blob is fine", async () => {
+    const real = storage();
+    const [failing, written, missing] = [randomUUID(), randomUUID(), randomUUID()];
+    for (const key of [failing, written]) await real.put(key, streamOf(pngBytes(100)));
+    await db.insert(files).values(
+      [failing, written, missing].map((storageKey) => ({ originalName: "x.png", sizeBytes: 100, contentType: "image/png", storageKey, status: "pending" as const, uploaderId: user.id })),
+    );
+    const flaky: StorageProvider = {
+      put: (key, stream, signal) => real.put(key, stream, signal),
+      open: (key) => real.open(key),
+      checkWritable: () => real.checkWritable(),
+      delete: async (key) => {
+        if (key === failing) throw Object.assign(new Error("EIO: i/o error"), { code: "EIO" });
+        await real.delete(key);
+      },
+    };
+    const logged = vi.spyOn(console, "error").mockImplementation(() => undefined);
+
+    await expect(sweepStalePending(flaky, 0)).resolves.toEqual({ removed: 3, blobsFailed: 1 });
+    expect(await db.select().from(files)).toHaveLength(0);
+    expect(storedNames()).toEqual([failing]);
+    expect(logged.mock.calls.map(([line]) => JSON.parse(String(line)))).toContainEqual(
+      expect.objectContaining({ event: "files.sweep.blob_failed", storageKey: failing }),
+    );
+  });
+
   it("F9: a full disk returns 507 and leaves no row", async () => {
     const full: StorageProvider = {
       ...storage(),

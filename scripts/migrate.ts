@@ -1,12 +1,13 @@
 // Applies pending migrations, then exits. Runs as its own deploy step, never from the app (F7).
 // Exits non-zero on any failure, logging the error without the connection string.
+import { fileURLToPath } from "node:url";
 import { drizzle } from "drizzle-orm/node-postgres";
 import { migrate } from "drizzle-orm/node-postgres/migrator";
 import { Pool } from "pg";
 import { env } from "@/env";
 import { log } from "@/server/log";
 
-const migrationsFolder = new URL("../src/server/db/migrations", import.meta.url).pathname;
+const migrationsFolder = fileURLToPath(new URL("../src/server/db/migrations", import.meta.url));
 
 async function main() {
   // No statement_timeout here: a long migration must not be cut off half-way.

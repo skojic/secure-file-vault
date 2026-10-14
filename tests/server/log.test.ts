@@ -1,3 +1,5 @@
+import { DrizzleQueryError } from "drizzle-orm";
+import { DatabaseError } from "pg";
 import { describe, expect, it } from "vitest";
 import { redact } from "@/server/log";
 
@@ -30,6 +32,21 @@ describe("log redaction (rule 23)", () => {
       code: "X1",
       cause: { name: "Error", message: "terminating connection", code: "57P01" },
     });
+  });
+
+  it("logs PostgreSQL errors by code and constraint, never their message, detail or the query parameters", () => {
+    const pgErr = Object.assign(new DatabaseError('duplicate key value violates unique constraint "users_username_key"', 0, "error"), {
+      code: "23505",
+      constraint: "users_username_key",
+      detail: "Key (username)=(ana-private) already exists.",
+    });
+    const wrapped = new DrizzleQueryError('insert into "users" ("username") values ($1)', ["ana-private"], pgErr);
+    const out = redact({ err: wrapped }) as { err: Record<string, unknown> };
+    expect(out.err).toEqual({ name: "DrizzleQueryError", cause: { name: "DatabaseError", code: "23505", constraint: "users_username_key" } });
+
+    const castErr = Object.assign(new DatabaseError('invalid input syntax for type uuid: "not-a-uuid-secret"', 0, "error"), { code: "22P02" });
+    expect(redact(castErr)).toEqual({ name: "DatabaseError", code: "22P02" });
+    expect(JSON.stringify(out) + JSON.stringify(redact(castErr))).not.toMatch(/ana-private|not-a-uuid-secret/);
   });
 
   it("does not loop on circular structures", () => {
