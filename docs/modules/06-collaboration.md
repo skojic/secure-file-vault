@@ -8,9 +8,12 @@
 
 ## Steps
 1. README: prerequisites, `cp .env.example .env.local`, `docker compose up -d`, `npm run db:migrate`, `npm run dev`
-2. CI on every PR: install from lockfile, lint, typecheck, test against a Postgres service container, `npm audit --audit-level=high`
-3. PR template: what changed, scenario IDs covered, how it was verified (paste output), new dependencies and why
-4. CODEOWNERS: require a reviewer for `src/server/auth/` and `src/server/files/policy.ts`
+2. CI on every PR: install from lockfile, `npm run test:guard`, then `npm run guard:final` with `GUARD_MODULE` set
+   to the PR's plan (lint, typecheck, test against a Postgres service container, scope, scenarios; never cached),
+   `npm audit --audit-level=high`
+3. PR template: what changed, scenario IDs covered, the `guard:final` output, new dependencies and why
+4. CODEOWNERS: require a reviewer for `src/server/auth/`, `src/server/files/policy.ts`, `plans/*.approved.json`,
+   `scripts/guard/` and `.claude/` (the guard and its approvals)
 5. Update AGENTS.md "Commands" whenever a script changes
 
 ## Scenarios

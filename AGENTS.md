@@ -2,7 +2,7 @@
 
 The single source of truth for anyone changing this repository, human or AI agent.
 `CLAUDE.md` only imports this file. Detail lives in `docs/`; this file stays under ~80 lines.
-If a rule blocks you, say so. Do not work around it silently.
+If a rule blocks you, say so and fail loudly. Do not work around it silently.
 
 ## What this project is
 A blueprint for a secure file upload module in a full-stack Next.js app:
@@ -10,6 +10,8 @@ A blueprint for a secure file upload module in a full-stack Next.js app:
 - Log in with username + password; the session is stored in PostgreSQL
 - Upload files: metadata in PostgreSQL, bytes in a storage provider
 - Only the uploader or an admin may list, view or download a file
+- Admin can see each and everyone's files and the staff person can see just it's own
+- When user gets deleted, files remain, but only admin can view, download, delete them
 
 The repository starts as docs only. The app is built from these docs, module by module.
 
@@ -45,10 +47,11 @@ Route handlers and Server Actions never touch the database or storage directly.
 - "Done" means the command ran and you quote its output. Writing code is not done.
 
 ## Working loop (details in docs/workflow/ai-workflow.md)
-1. **Plan:** state the change, the files, the scenario IDs it covers, how it will be verified.
-2. **Build** the smallest vertical slice. One module per PR.
-3. **Verify:** `npm run lint`, `npm run typecheck`, `npm test` must pass. Quote the result.
+1. **Plan:** write `plans/<module>.md` ([format](plans/README.md)). A person approves it; you never do.
+2. **Build** the smallest vertical slice, only in the plan's files. One module per PR.
+3. **Verify:** `node scripts/guard/run.mjs --final` must pass (lint, typecheck, test, scope, scenarios). Quote it.
 4. **Narrate:** comment the code per `docs/workflow/narration.md`.
+New session: read `.guard/handoff/<module>.md` first; it is generated from git and the gate ledger.
 
 ## Commands (created in docs/modules/01-setup.md; update this list when scripts change)
 - `docker compose up -d` — start PostgreSQL
@@ -56,6 +59,7 @@ Route handlers and Server Actions never touch the database or storage directly.
 - `npm run db:generate` / `npm run db:migrate` — migrations
 - `npm run db:seed` — first admin from env vars
 - `npm run lint` · `npm run typecheck` · `npm test` · `npm run test:e2e`
+- `node scripts/guard/run.mjs [--final]` — gates + ledger · `check-plan.mjs` · `scenarios-for.mjs <module>`
 
 ## Hard limits
 - No new dependency without a reason in the PR description.

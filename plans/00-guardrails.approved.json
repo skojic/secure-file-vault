@@ -1,0 +1,7 @@
+{
+  "module": "00-guardrails",
+  "sha256": "fb8031022d866e5576fc7b2e315eb8e1ee91bbde12363303b9938e6459dfc5fb",
+  "base": "dfe21f3d256fd4163ac364e9be429d59319cfa43",
+  "approved_at": "2026-10-14T17:16:56.762Z",
+  "approved_by": "skojic"
+}

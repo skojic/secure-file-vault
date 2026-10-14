@@ -16,7 +16,8 @@
 6. Add `errors.ts` (typed errors) and `http.ts` (one error → status mapper)
 7. Add `log.ts` with a redaction list (`password`, `cookie`, `authorization`)
 8. Wire Vitest against a separate test database ([decisions/10](../decisions/10-test-database.md))
-9. Add scripts: `dev`, `build`, `lint`, `typecheck`, `test`, `db:generate`, `db:migrate`, `db:seed`
+9. Add scripts: `dev`, `build`, `lint`, `typecheck`, `test`, `db:generate`, `db:migrate`, `db:seed`,
+   and the guard: `guard` (`node scripts/guard/run.mjs`), `guard:final` (`… --final`), `test:guard` (`node --test 'scripts/guard/*.test.mjs'`)
 
 ## Rules
 22, 23 in [security/rules.md](../security/rules.md)
