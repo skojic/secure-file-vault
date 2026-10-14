@@ -1,0 +1,61 @@
+# Edge cases (E)
+
+## Identity and sessions
+- **E1. Username lookalikes** — `Admin`, ` admin`, fullwidth `ａｄｍｉｎ`
+  - **Proposal:** trim → NFKC → lowercase → `^[a-z0-9._-]{3,32}$`; unique index on the normalised value
+  - **Test:** all three collide with `admin`
+- **E2. Login timing reveals which usernames exist**
+  - **Proposal:** when the user is missing, verify against a cached dummy hash
+  - **Test:** unknown-user and wrong-password paths both call verify once (spy), same response
+- **E3. Registration says "username taken"** — enumeration
+  - **Proposal:** acceptable only with invite-only registration; with open registration, keep it generic. Record the choice in [decisions/08](../decisions/08-registration-and-roles.md)
+  - **Test:** message matches the configured mode
+- **E4. Password bounds** — a 1 MB password is a cheap denial of service against argon2
+  - **Proposal:** 12–128 characters in Zod, before hashing
+  - **Test:** 11 and 129 rejected; hash function not called
+- **E5. bcrypt truncation** (only if [decisions/03](../decisions/03-password-hashing.md) picks bcrypt) — input beyond 72 bytes is ignored
+  - **Proposal:** cap at 72 **bytes** (not characters) or use argon2id
+  - **Test:** two passwords sharing the first 72 bytes must not both verify
+- **E6. Role changed or user disabled mid-session**
+  - **Proposal:** read role from `users` every request; disabling deletes all sessions
+  - **Test:** demote admin → next request cannot see others' files
+- **E7. Expired session rows pile up**
+  - **Proposal:** delete expired rows on login or on a schedule; compare with DB `now()`
+  - **Test:** expired row is ignored by `getCurrentUser()` and removed by cleanup
+- **E8. Logout via GET link** — a third-party page can log users out
+  - **Proposal:** POST-only Server Action
+  - **Test:** GET to the logout path leaves the session intact
+- **E19. Last admin disabled or demoted** — nobody can create admins again
+  - **Proposal:** block the change when it would leave zero active admins
+  - **Test:** disabling the only admin returns a validation error
+
+## Files
+- **E9. Types without magic bytes** — CSV, TXT, JSON have none; DOCX/XLSX are ZIP containers
+  - **Proposal:** allow-list as explicit pairs (detected signature → stored type); text via a UTF-8 check plus extension; never HTML, SVG, XML
+  - **Test:** a `.csv` of valid UTF-8 passes; an HTML file renamed `.txt` fails
+- **E10. Filename injection** — quotes, CR/LF, `../`, non-ASCII
+  - **Proposal:** strip control chars and separators, cap 255; header has ASCII `filename=` plus `filename*=UTF-8''…` (RFC 6266)
+  - **Test:** `a"\r\nX-Evil: 1.pdf` produces one clean header
+- **E11. Size boundaries** — 0 bytes, `MAX`, `MAX+1`, missing or false `Content-Length`
+  - **Proposal:** decide on 0-byte files explicitly; count bytes while streaming
+  - **Test:** table-driven test over all four cases
+- **E12. Same file uploaded twice** — two rows is fine; deduplicating across users by hash would leak that a file exists
+  - **Test:** two uploads → two ids, two keys
+- **E13. Quota race** — two parallel uploads both pass the quota check
+  - **Proposal:** lock the user row (`SELECT … FOR UPDATE`) while summing `pending + ready` sizes, or reserve the declared size up front
+  - **Test:** two parallel uploads that together exceed the quota → one fails
+- **E14. Proxy buffers the upload body** — Next.js proxy clones and buffers bodies up to `proxyClientMaxBodySize` (10 MB default, experimental option)
+  - **Proposal:** exclude `/api/files` from the proxy matcher
+  - **Test:** a 20 MB upload arrives intact and no proxy warning is logged
+- **E15. Missing or malformed env var**
+  - **Proposal:** `env.ts` fails at startup with the variable **name**, never its value
+  - **Test:** error message contains `DATABASE_URL` and not the URL
+- **E16. Non-UUID id in the download path** — Postgres raises a 500
+  - **Proposal:** Zod `uuid()` first; invalid → the same 404 as forbidden
+  - **Test:** `not-a-uuid` → 404 with the standard body
+- **E17. HEAD and Range requests**
+  - **Proposal:** same policy check on every method; if Range is unsupported, ignore it and return a full 200
+  - **Test:** HEAD by other staff → 404
+- **E18. Uploader disabled** — their files remain
+  - **Proposal:** files stay visible to admins only; `canAccessFile` already guarantees it
+  - **Test:** disable uploader → admin can download, other staff cannot

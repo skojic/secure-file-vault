@@ -1,0 +1,22 @@
+# Bottlenecks (B)
+
+- **B1. Every byte passes through the Node process**
+  - **Why it limits:** each transfer holds a connection; local disk cannot scale past one instance
+  - **Proposal:** stream end to end, never buffer. Move to S3-compatible storage before a second instance. Presigned URLs only with a short TTL, after the policy check ([decisions/07](../decisions/07-download-delivery.md))
+  - **Test:** upload a file 10× larger than the heap limit you set with `--max-old-space-size` in the test → succeeds
+- **B2. argon2id on login is CPU- and memory-heavy by design**
+  - **Proposal:** concurrency cap plus rate limit (F6). Size container memory for `cap × 19 MiB` plus headroom
+  - **Test:** measure p95 login latency at the cap; record it in the PR
+- **B3. Session lookup on every request**
+  - **Why it limits:** a primary-key read is cheap; a write on every request (sliding expiry) is not
+  - **Proposal:** extend `expires_at` only when less than half the lifetime remains
+  - **Test:** two requests in a row cause zero session updates
+- **B4. Admin file list grows with every upload**
+  - **Proposal:** keyset pagination on `(created_at desc, id desc)` with matching composite indexes, never `OFFSET`
+  - **Test:** `EXPLAIN` on the list query uses the index (no sequential scan) with 10k seeded rows
+- **B5. Dev hot reload opens a new DB pool each time**
+  - **Proposal:** cache the client on `globalThis` outside production *(common pattern; confirm against the chosen driver's docs)*
+  - **Test:** 20 hot reloads → `pg_stat_activity` connection count stays flat
+- **B6. Mandatory human review becomes the queue**
+  - **Proposal:** auth, policy and upload land as small separate PRs, each with its tests, so each review is short
+  - **Test:** none automated; track PR size in review

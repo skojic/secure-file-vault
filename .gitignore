@@ -1,0 +1,22 @@
+node_modules/
+.next/
+out/
+coverage/
+playwright-report/
+test-results/
+*.tsbuildinfo
+next-env.d.ts
+
+# Secrets: only .env.example is committed
+.env
+.env.*
+!.env.example
+
+# Local file storage (dev and tests)
+storage/
+.test-storage/
+
+# Personal agent notes
+CLAUDE.local.md
+
+.DS_Store

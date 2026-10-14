@@ -1,0 +1,32 @@
+# Failure scenarios (F)
+
+- **F1. Blob written, DB insert fails** — an orphaned copy of sensitive data nobody can find
+  - **Proposal:** row first as `pending`, then blob, then `ready`. A sweeper deletes stale `pending` rows and their blobs. Every blob is then findable by query
+  - **Test:** force the `ready` update to throw → no row, no blob
+- **F2. Row exists, blob missing** (volume not mounted, wrong `STORAGE_DIR`)
+  - **Proposal:** open the blob before sending headers; missing → 404 + error log with `file_id`. Startup check that `STORAGE_DIR` exists and is writable
+  - **Test:** delete the blob, request download → 404, not a 200 with 0 bytes
+- **F3. Database down during `getCurrentUser()`**
+  - **Proposal:** `null` = not logged in; a thrown error = 503. Never treat "lookup failed" as anonymous, and never redirect-loop to `/login`
+  - **Test:** mock the DB to reject → 503, no redirect
+- **F4. Client disconnects mid-upload**
+  - **Proposal:** write to a temp name, rename only after size and type pass; delete temp on abort. F1's sweeper catches the rest
+  - **Test:** abort the stream half-way → no row, no blob, no temp file
+- **F5. Upload through a Server Action**
+  - **Proposal:** use a route handler. Server Actions cap the body at 1 MB by default (`serverActions.bodySizeLimit`, Next.js 16.4 docs) and the request is not a stream we can count
+  - **Test:** a 5 MB upload through the route succeeds
+- **F6. Burst of logins** — argon2id at 19 MiB per hash can exhaust RAM
+  - **Proposal:** cap concurrent hashes with a small semaphore; rate-limit login per IP and per username ([decisions/09](../decisions/09-rate-limiting.md))
+  - **Test:** 50 parallel logins never run more than `ARGON2_MAX_CONCURRENCY` hashes at once
+- **F7. Migration fails half-way in deploy**
+  - **Proposal:** migrations run as a separate step before the app starts; the deploy fails if it fails. Never migrate from the app at runtime
+  - **Test:** CI runs `db:migrate` on an empty database and on the previous release's schema
+- **F8. Seed runs twice, or admin env vars missing**
+  - **Proposal:** idempotent seed (no-op if any admin exists); Zod-validate seed env; no default password
+  - **Test:** run twice → one admin; run without `SEED_ADMIN_PASSWORD` → exits non-zero
+- **F9. Disk full or storage error mid-write**
+  - **Proposal:** treat like F4: clean up, leave no `ready` row, return 507 or 503, log at error level
+  - **Test:** storage stub throws on write → no row, correct status
+- **F10. Compromised or vulnerable dependency**
+  - **Proposal:** lockfile committed, `npm ci` in CI, `npm audit --audit-level=high` gate, every new dependency justified in the PR
+  - **Test:** CI job fails when audit reports a high-severity advisory
