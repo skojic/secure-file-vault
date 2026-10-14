@@ -1,7 +1,7 @@
 // Tables per docs/architecture/data-model.md. Timestamps are timestamptz and default to the
 // database's now(), never the app clock.
 // No `import "server-only"` here: drizzle-kit loads this file in plain Node, where it throws.
-import { index, integer, jsonb, pgEnum, pgTable, primaryKey, text, timestamp, uuid } from "drizzle-orm/pg-core";
+import { bigint, index, integer, jsonb, pgEnum, pgTable, primaryKey, text, timestamp, uuid } from "drizzle-orm/pg-core";
 
 const timestamps = {
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
@@ -21,6 +21,32 @@ export const users = pgTable("users", {
   disabledAt: timestamp("disabled_at", { withTimezone: true }),
   ...timestamps,
 });
+
+export const fileStatus = pgEnum("file_status", ["pending", "ready"]);
+
+// Metadata only; the bytes live in storage under `storage_key` (rules 16–18). A row exists before
+// its bytes (pending) so every stored byte has a row that finds it (F1). Reads filter status = 'ready'.
+export const files = pgTable(
+  "files",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    // Metadata only, never a path (rule 16).
+    originalName: text("original_name").notNull(),
+    sizeBytes: bigint("size_bytes", { mode: "number" }).notNull(),
+    // Detected from the bytes, never the client's Content-Type (rule 15).
+    contentType: text("content_type").notNull(),
+    storageKey: uuid("storage_key").notNull().unique(),
+    status: fileStatus("status").notNull().default("pending"),
+    uploaderId: uuid("uploader_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "restrict" }),
+    ...timestamps,
+  },
+  (t) => [
+    index("files_uploader_created_idx").on(t.uploaderId, t.createdAt.desc(), t.id.desc()),
+    index("files_created_idx").on(t.createdAt.desc(), t.id.desc()),
+  ],
+);
 
 // The cookie holds the raw token; this table holds only its SHA-256 (rule 8), so a database leak
 // does not hand out live sessions.

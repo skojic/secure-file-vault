@@ -1,14 +1,30 @@
-// Readiness (rule 28, F11): the database answers and every migration in the journal is applied.
-// Module 04 adds the storage check. Results name the failed checks for logs; the route never sends them.
+// Readiness (rule 28, F11): the database answers, every migration in the journal is applied, and
+// storage is writable. Results name the failed checks for logs; the route never sends them.
 import "server-only";
 import type { Pool } from "pg";
 import bundledJournal from "@/server/db/migrations/meta/_journal.json";
+import type { StorageProvider } from "@/server/storage/types";
 
 type Journal = { entries: { when: number; tag: string }[] };
 export type Readiness = { ok: boolean; failed: string[] };
 
-export async function checkReadiness({ pool, journal = bundledJournal }: { pool: Pool; journal?: Journal }): Promise<Readiness> {
+export async function checkReadiness({
+  pool,
+  journal = bundledJournal,
+  storage,
+}: {
+  pool: Pool;
+  journal?: Journal;
+  storage?: StorageProvider;
+}): Promise<Readiness> {
   const failed: string[] = [];
+  if (storage) {
+    try {
+      await storage.checkWritable();
+    } catch {
+      failed.push("storage");
+    }
+  }
   let latestApplied: number | null = null;
   try {
     // Drizzle records each applied migration's folder timestamp in created_at.

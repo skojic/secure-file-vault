@@ -15,7 +15,8 @@
 6. Any failure: delete blob and row, release the key, return a typed error (413 too large, 415 type, 507 or 503 storage)
 7. `health.ts` gains the `STORAGE_DIR` writable check (F11)
 8. Filename: from an `X-File-Name` header (percent-encoded), stripped of control chars and path separators, max 255
-9. Optional: per-user quota before writing (E13)
+9. Per-user quota (E13): reserve the declared size, or the maximum when there is no Content-Length, with the user row locked
+10. Zero-byte files are rejected with 400: there are no bytes to detect a type from (E11)
 
 ## Rules
 11–18, 24–26, 28, 29 in [security/rules.md](../security/rules.md)

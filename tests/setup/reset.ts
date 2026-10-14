@@ -3,5 +3,5 @@ import { sql } from "drizzle-orm";
 
 export async function resetTables() {
   const { db } = await import("@/server/db/client");
-  await db.execute(sql`TRUNCATE users, sessions, rate_limits, idempotency_keys RESTART IDENTITY CASCADE`);
+  await db.execute(sql`TRUNCATE users, files, sessions, rate_limits, idempotency_keys RESTART IDENTITY CASCADE`);
 }

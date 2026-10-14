@@ -28,6 +28,15 @@ describe("readiness", () => {
     expect(result).toEqual({ ok: false, failed: ["migrations"] });
   });
 
+  it("F11, F2: not ready when STORAGE_DIR is missing; ready when it is writable", async () => {
+    const { pool } = await import("@/server/db/client");
+    const { LocalDiskStorage } = await import("@/server/storage/local-disk");
+    const missing = new LocalDiskStorage("/nonexistent/secure-file-vault-storage");
+    expect(await checkReadiness({ pool, storage: missing })).toEqual({ ok: false, failed: ["storage"] });
+    const present = new LocalDiskStorage(process.env.STORAGE_DIR!);
+    expect(await checkReadiness({ pool, storage: present })).toEqual({ ok: true, failed: [] });
+  });
+
   it("F11: a database that was never migrated reports migrations, not database", async () => {
     const scratch = await createScratchDatabase();
     const fresh = new Pool({ connectionString: scratch.url });

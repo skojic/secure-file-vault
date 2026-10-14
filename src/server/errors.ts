@@ -51,6 +51,12 @@ export class PayloadTooLargeError extends AppError {
   readonly code = "payload_too_large";
 }
 
+// The upload would take the user over USER_QUOTA_BYTES (E13).
+export class QuotaExceededError extends AppError {
+  readonly status = 413;
+  readonly code = "quota_exceeded";
+}
+
 export class UnsupportedMediaTypeError extends AppError {
   readonly status = 415;
   readonly code = "unsupported_media_type";

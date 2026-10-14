@@ -1,5 +1,6 @@
 import { connection } from "next/server";
 import { pool } from "@/server/db/client";
+import { defaultStorage } from "@/server/files/upload";
 import { checkReadiness } from "@/server/health";
 import { log } from "@/server/log";
 
@@ -7,7 +8,7 @@ import { log } from "@/server/log";
 export async function GET() {
   // Without this, Cache Components could prerender the check at build time.
   await connection();
-  const readiness = await checkReadiness({ pool });
+  const readiness = await checkReadiness({ pool, storage: defaultStorage() });
   if (readiness.ok) {
     return Response.json({ status: "ok" }, { headers: { "Cache-Control": "no-store" } });
   }

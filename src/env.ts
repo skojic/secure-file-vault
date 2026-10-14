@@ -20,6 +20,14 @@ const schema = z.object({
   LOGIN_WINDOW_SECONDS: z.coerce.number().int().min(10).default(300),
   // Trust X-Forwarded-For only behind a known proxy; otherwise the per-IP limit is skipped.
   TRUST_PROXY_HEADERS: z.enum(["true", "false"]).default("false").transform((v) => v === "true"),
+  // Uploads (rules 14, 28). STORAGE_DIR must exist and be writable; it is never created implicitly,
+  // so a missing volume shows up as "not ready" instead of an empty new directory (F2, F11).
+  STORAGE_DIR: z.string().min(1).default("./storage"),
+  MAX_UPLOAD_BYTES: z.coerce.number().int().min(1).default(50 * 1024 * 1024),
+  USER_QUOTA_BYTES: z.coerce.number().int().min(1).default(1024 * 1024 * 1024),
+  UPLOAD_TIMEOUT_MS: z.coerce.number().int().min(100).default(10 * 60 * 1000),
+  // The site's own origin for the upload Origin check (rule 13). Unset: derived from the Host header.
+  APP_ORIGIN: z.url().optional(),
   // Read only by scripts/seed.ts, which checks they are present (F8).
   SEED_ADMIN_NAME: z.string().optional(),
   SEED_ADMIN_USERNAME: z.string().optional(),

@@ -55,7 +55,8 @@ Route handlers and Server Actions never touch the database or storage directly.
 - `docker compose up -d --wait` — start PostgreSQL (host port 5433; set `POSTGRES_PORT` to change)
 - `npm run dev` — dev server
 - `npm run db:generate` / `npm run db:migrate` — migrations
-- `npm run db:seed` — first admin from env vars (added in module 02)
+- `npm run db:seed` — first admin from env vars
+- `npm run files:sweep` — delete uploads stuck in `pending` (schedule it)
 - `npm run lint` · `npm run typecheck` · `npm test` · `npm run test:e2e`
 
 ## Hard limits
