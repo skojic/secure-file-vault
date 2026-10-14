@@ -13,18 +13,20 @@
 4. Route `GET`: type `ctx` with `RouteContext<'/api/files/[id]/download'>`; `await ctx.params`
 5. Response headers per rule 20. Pages listing files also send `Cache-Control: no-store`
 6. Log denied attempts (user id, file id) for the audit trail
+7. Delete (owner or admin): the client confirms first; the Server Action sends the file id, the `updated_at` the user saw, and an idempotency key. The service locks the row, re-checks the policy, and deletes only if the version still matches (409 otherwise). The bytes go after the row commits
 
 ## Rules
-1–5, 19–21, 23, 24 in [security/rules.md](../security/rules.md)
+1–5, 19–21, 23, 24, 26, 27, 29 in [security/rules.md](../security/rules.md)
 
 ## Scenarios
-H5, F2 (row without blob), E16 (bad UUID), E17 (HEAD and Range), E18 (disabled uploader), B4
+H5, F2 (row without blob), E16 (bad UUID), E17 (HEAD and Range), E18 (disabled uploader), E20 (repeated delete), E21 (key reuse), E22 (stale view), B4
 
 ## Done when
 - Policy: uploader allowed, admin allowed, other staff denied, anonymous denied
 - Other staff's file, missing file and `not-a-uuid` all return identical 404s
 - A staff list never contains another user's file, even with 1,000 rows from others
 - A row whose blob is gone returns 404 and logs at error level
+- Deleting a file that changed after the page loaded returns 409 and deletes nothing
 
 ## Narrate it
 "One function decides access, so there is exactly one place to review and test; every route calls it instead of repeating the rule.

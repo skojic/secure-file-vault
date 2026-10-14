@@ -43,8 +43,10 @@ export const files = pgTable(
     ...timestamps,
   },
   (t) => [
-    index("files_uploader_created_idx").on(t.uploaderId, t.createdAt.desc(), t.id.desc()),
-    index("files_created_idx").on(t.createdAt.desc(), t.id.desc()),
+    // NULLS FIRST is what plain `ORDER BY ... DESC` means; an index with a different null order cannot
+    // supply that order, and the list query falls back to a full sort (B4).
+    index("files_uploader_created_idx").on(t.uploaderId, t.createdAt.desc().nullsFirst(), t.id.desc().nullsFirst()),
+    index("files_created_idx").on(t.createdAt.desc().nullsFirst(), t.id.desc().nullsFirst()),
   ],
 );
 

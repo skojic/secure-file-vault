@@ -12,7 +12,7 @@
   - **Proposal:** extend `expires_at` only when less than half the lifetime remains
   - **Test:** two requests in a row cause zero session updates
 - **B4. Admin file list grows with every upload**
-  - **Proposal:** keyset pagination on `(created_at desc, id desc)` with matching composite indexes, never `OFFSET`
+  - **Proposal:** keyset pagination on `(created_at desc, id desc)` with matching composite indexes, never `OFFSET`. The index null order must match the query: plain `DESC` means `NULLS FIRST`, and an index built `DESC NULLS LAST` cannot supply that order
   - **Test:** `EXPLAIN` on the list query uses the index (no sequential scan) with 10k seeded rows
 - **B5. Dev hot reload opens a new DB pool each time**
   - **Proposal:** cache the client on `globalThis` outside production *(common pattern; confirm against the chosen driver's docs)*

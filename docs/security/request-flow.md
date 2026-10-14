@@ -59,7 +59,7 @@ flowchart LR
 - The client asks before an irreversible action: delete a file, disable a user, change a role.
 - The server does not trust the dialog. The request carries the target's `updated_at` as the user saw it; if the row changed
   since, nothing happens and the response is 409 (E22). The user sees the current state and decides again.
-- No module builds these actions yet; the rule binds when one does.
+- File deletion (module 05) follows this. Disabling users and changing roles must follow it when they are built.
 
 ## Dependencies
 - **At startup and deploy:** the app is ready only when PostgreSQL answers, the migrations are current, and `STORAGE_DIR`
