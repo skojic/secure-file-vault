@@ -13,8 +13,8 @@ next-env.d.ts
 !.env.example
 
 # Local file storage (dev and tests)
-storage/
-.test-storage/
+/storage/
+/.test-storage/
 
 # Personal agent notes
 CLAUDE.local.md
