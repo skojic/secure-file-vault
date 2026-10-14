@@ -19,7 +19,4 @@ storage/
 # Personal agent notes
 CLAUDE.local.md
 
-# Guard ledger: local run status, history and handoffs (scripts/guard/run.mjs)
-.guard/
-
 .DS_Store

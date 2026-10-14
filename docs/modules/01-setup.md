@@ -5,7 +5,8 @@
 ## Files
 `package.json` · `tsconfig.json` (strict) · `eslint.config.mjs` · `.nvmrc` · `.env.example` ·
 `docker-compose.yml` · `drizzle.config.ts` · `src/env.ts` · `src/server/db/{client,schema}.ts` ·
-`src/server/{errors,http,log}.ts` · `scripts/{migrate,seed}.ts` · `vitest.config.mts`
+`src/server/{errors,http,log}.ts` · `src/server/health.ts` · `src/app/api/health/route.ts` · `scripts/migrate.ts` · `vitest.config.mts`
+(The admin seed needs password hashing, so it lives in [02-registration.md](02-registration.md).)
 
 ## Steps
 1. Scaffold with `create-next-app` (TypeScript, App Router, ESLint, `src/`). Read the installed version's docs in `node_modules/next/dist/docs/` before writing code
@@ -16,20 +17,21 @@
 6. Add `errors.ts` (typed errors) and `http.ts` (one error → status mapper)
 7. Add `log.ts` with a redaction list (`password`, `cookie`, `authorization`)
 8. Wire Vitest against a separate test database ([decisions/10](../decisions/10-test-database.md))
-9. Add scripts: `dev`, `build`, `lint`, `typecheck`, `test`, `db:generate`, `db:migrate`, `db:seed`,
-   and the guard: `guard` (`node scripts/guard/run.mjs`), `guard:final` (`… --final`), `test:guard` (`node --test 'scripts/guard/*.test.mjs'`)
+9. Timeouts on the pool: connection timeout and PostgreSQL `statement_timeout`, both from `env.ts`; a timeout maps to 503 with `Retry-After` in `http.ts` (F12)
+10. `health.ts`: database answers, latest migration applied; `GET /api/health` returns 200 or 503 with no detail in the body (F11). Module 04 adds the `STORAGE_DIR` check
+11. Add scripts: `dev`, `build`, `lint`, `typecheck`, `test`, `db:generate`, `db:migrate`
 
 ## Rules
-22, 23 in [security/rules.md](../security/rules.md)
+22, 23, 28 in [security/rules.md](../security/rules.md)
 
 ## Scenarios
-F7 (migration fails), F8 (seed twice), B5 (dev connection pool), E15 (missing env)
+F7 (migration fails), F11 (dependency down), F12 (slow dependency), B5 (dev connection pool), E15 (missing env)
 
 ## Done when
 - `docker compose up -d` then `npm run db:migrate` exits 0
 - `npm run lint`, `npm run typecheck`, `npm test` exit 0
 - A test proves `env.ts` throws on a missing `DATABASE_URL` and does not print its value
-- Running `npm run db:seed` twice leaves exactly one admin
+- With the database stopped, `/api/health` returns 503 and its body names nothing; a query past `statement_timeout` returns 503 and frees its connection
 
 ## Narrate it
 "Config is validated once at the edge so nothing downstream ever reads a raw string from `process.env`.

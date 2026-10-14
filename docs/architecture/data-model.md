@@ -21,6 +21,12 @@ All timestamps are `timestamptz`. "Now" is the database's `now()`, never the app
 - Index `(uploader_id, created_at desc, id desc)` for staff lists, `(created_at desc, id desc)` for admin lists
 - Every read filters `status = 'ready'` inside the service
 
+## idempotency_keys ([request-flow.md](../security/request-flow.md), rule 26)
+- `key` uuid pk (client-generated, one per user intent) · `user_id` → users **on delete cascade**, null for anonymous registration
+- `route` text · `request_hash` text (SHA-256 of route + validated input) · `state` enum(`in_progress`, `completed`)
+- `response_status` int null · `response_body` jsonb null (a small result: an id or a redirect target; never contents, tokens or request bodies)
+- `created_at` · `expires_at` (created + 24 h) · index `(expires_at)` for cleanup
+
 ## Optional, added when the module needs them
 - `invites` (code_hash, created_by, expires_at, used_at) — invite-only registration
 - `rate_limits` (key, window_start, count) — Postgres-backed limiter ([decisions/09](../decisions/09-rate-limiting.md))

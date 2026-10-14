@@ -59,3 +59,14 @@
 - **E18. Uploader disabled** — their files remain
   - **Proposal:** files stay visible to admins only; `canAccessFile` already guarantees it
   - **Test:** disable uploader → admin can download, other staff cannot
+
+## Requests ([request-flow.md](../security/request-flow.md))
+- **E20. Double submit** — double click, browser retry after a network error, back button resubmitting a form
+  - **Proposal:** one `Idempotency-Key` per user intent; the service claims it before the effect; a completed key replays the stored result, an in-progress key returns 409 (rule 26)
+  - **Test:** two identical uploads with the same key → one row, one blob, both responses carry the same file id; a second while the first streams → 409
+- **E21. Key reused for a different request** — a client bug or a crafted request reuses another intent's key
+  - **Proposal:** store the request hash and the user with the key; any mismatch is 422 and nothing runs
+  - **Test:** same key, different `X-File-Name` → 422, no row; same key from another user → 422
+- **E22. Acting on a stale view** — an admin disables a user who was changed after the page loaded
+  - **Proposal:** the request carries the `updated_at` the user saw; a mismatch is 409 (rule 27)
+  - **Test:** change the row between load and submit → 409, row unchanged

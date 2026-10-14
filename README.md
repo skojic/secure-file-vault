@@ -3,9 +3,8 @@
 A blueprint for a secure file upload module in a full-stack Next.js (TypeScript) and PostgreSQL app:
 registration, login with database sessions, file uploads, and owner-or-admin access to every file.
 
-The repository holds the specification and the controls around building it. The application is built from
-these documents one module at a time, and every change passes through a plan that a person approves and
-a set of pass/fail gates that decide when the work is done.
+The repository is the specification. The application is built from these documents one module at a time,
+and every request it serves passes the same ordered set of guardrails.
 
 ## What is in the repository
 
@@ -17,13 +16,11 @@ docs/
   architecture/            folder layout, layering, data model
   modules/                 one file per module, in build order (setup → collaboration)
   security/rules.md        binding security rules
+  security/request-flow.md request guardrails: gate order, duplicates, confirmation, dependencies
   decisions/               each technical choice with two options and the trade-offs
   scenarios/               happy path (H), failures (F), edge cases (E), bottlenecks (B)
   workflow/                how a change moves from plan to merge
   references.md            official documentation the docs rely on
-plans/                     one approved plan per change, plus its approval stamp
-scripts/guard/             the gate scripts, the run ledger and the agent hooks
-.claude/settings.json      hook wiring for the agent
 ```
 
 ## The application it describes
@@ -43,95 +40,69 @@ scripts/guard/             the gate scripts, the run ledger and the agent hooks
 Layering keeps these rules in one place: thin routes in `src/app/` call `src/server/<module>/service.ts`,
 which alone talks to the database and storage.
 
+## Request guardrails
+
+Every request passes the same gates in the same order, and each gate lives in one layer. A gate runs only after
+the previous one passed, so a request is rejected at the cheapest point that can reject it.
+
 ```mermaid
 flowchart LR
-  B[Browser] --> R["Route handler<br/>validate input"]
-  R --> U["getCurrentUser()<br/>session lookup"]
-  U --> S["File service<br/>load row"]
-  S --> P{"canAccessFile?"}
-  P -- no --> N["404"]
-  P -- yes --> St["Storage<br/>open blob"]
-  St --> Res["Stream with<br/>safe headers"]
+  C["0 · Client<br/>pending lock · schema · confirm · key"] --> P["1 · Proxy<br/>cookie present?"]
+  P --> S["2 · Shape<br/>Origin · size · schema · rate limit"]
+  S --> I["3 · Identity<br/>getCurrentUser()"]
+  I --> A["4 · Authorization<br/>policy"]
+  A --> D["5 · Duplicate<br/>claim key · check version"]
+  D --> R["6 · Dependencies<br/>quota · storage · timeouts"]
+  R --> E["7 · Effect<br/>all-or-nothing, then record result"]
 ```
 
-## How a change is made
+| Gate | What it guarantees | When it fails |
+|---|---|---|
+| Client | The submit button is locked while a request is pending; input is checked against the same schema the server uses; irreversible actions ask for confirmation; each user intent gets one idempotency key | Nothing is sent. These checks are convenience only, and the server repeats every one |
+| Proxy | Pages without a session cookie redirect to login | Redirect. Not a security boundary; uploads bypass it entirely |
+| Shape | The method, `Origin`, size, headers and body match an explicit schema; only named fields are written; rate limits apply before any expensive work | 400, 403, 413, 415 or 429; a bad file id is the standard 404 |
+| Identity | The session is valid and the user is active | Not logged in → 401 or redirect; a failed lookup → 503, never anonymous |
+| Authorization | The policy function allows this user this action | 404 for files, 403 elsewhere |
+| Duplicate | The idempotency key is claimed before any effect; irreversible changes still match the version the user saw | A repeat returns the first result with no second effect; in progress or stale → 409; a key reused for a different request → 422 |
+| Dependencies | Quota, storage and the database are available, and every call is bounded by a timeout | 503 with `Retry-After`, or 507 when storage is full |
+| Effect | The change happens completely or not at all, then its result is stored under the key | Rolled back, and the key is released so a retry can run |
 
-Every change follows the same loop, and each step is enforced by a script rather than by instruction.
+### Duplicate requests
+Double clicks, browser retries after a network error and resubmitted forms all reach the server as repeats.
+Anything that creates something or cannot be undone (registration, uploads, admin actions) carries an
+`Idempotency-Key` that the client generates once per intent and reuses on every retry. The server claims the key in
+the `idempotency_keys` table before acting:
 
 ```mermaid
 flowchart TD
-  A["Write plans/NN-module.md<br/>files · scenarios · rules · commands"] --> B{"check-plan"}
-  B -- fail --> A
-  B -- pass --> C["A person approves it in a terminal<br/>approve-plan → stamp with plan hash + base commit"]
-  C --> D["Build inside the plan's files"]
-  D -->|"edit outside the plan"| X["Edit hook denies"]
-  D --> E["Stop hook runs the gates<br/>(when files changed)"]
-  E -- fail --> D
-  E -- pass --> F["run.mjs --final<br/>no cache, every gate"]
-  F --> G["Output pasted into the PR<br/>reviewed and merged"]
-  E -. records .-> L[("Ledger .guard/<br/>status · history · handoff")]
-  F -. records .-> L
-  L -. read at session start .-> D
+  K["Claim key"] --> N{"Existing row?"}
+  N -- no --> Run["Run dependencies + effect<br/>store result"]
+  N -- yes --> M{"Same user, route<br/>and request hash?"}
+  M -- no --> R422["422 · nothing runs"]
+  M -- yes --> St{"State"}
+  St -- completed --> Rep["Return stored result<br/>no second effect"]
+  St -- "in progress" --> R409["409 · Retry-After"]
+  St -- "in progress, past timeout" --> Run
 ```
 
-### Plans and approval
-- A plan is `plans/<module>.md`: prose plus one `json plan` block listing the files it may change, the scenario
-  IDs it covers, the security rules that apply and the commands that verify it. The format is in
-  [plans/README.md](plans/README.md).
-- `check-plan` rejects a plan whose files fall outside the allowed folders, whose scenario IDs or rule numbers do
-  not exist, or that leaves out a scenario its module file lists.
-- Approval is a person running `approve-plan` in an interactive terminal and typing the module name. It writes
-  `plans/<module>.approved.json` with the plan file's SHA-256 and the base commit. Any later edit to the plan
-  voids the approval until it is approved again.
+Stored results are small (an id or a redirect target) and never contain file contents, tokens or request bodies.
+Keys expire after 24 hours.
 
-### Gates
-`node scripts/guard/run.mjs [--final]` is the single entry point. Each gate exits pass or fail:
+### Confirmation
+Deleting a file, disabling a user or changing a role asks the user to confirm, but the server does not rely on the
+dialog. The request carries the `updated_at` of the record as the user saw it; if the record changed in the meantime,
+nothing happens and the response is 409, so nobody acts on a stale view.
 
-| Gate | Fails when |
-|---|---|
-| `plan` | The plan does not pass `check-plan` |
-| `approval` | The stamp is missing or the plan changed after approval |
-| `scope` | Any file changed since the base commit, by any tool, is not listed in the plan (read from git) |
-| `scenarios` | A scenario ID the module lists has no named check in the repository |
-| plan commands | Any command in the plan (lint, type checks and the rest) exits non-zero; they run only from an approved plan |
+### Dependencies
+The app reports ready on `GET /api/health` only when PostgreSQL answers, migrations are current and storage is
+writable; the response carries no detail. Every database and storage call has a timeout, a slow dependency fails
+with 503 instead of holding connections, and the server never retries a write on its own.
 
-### Run ledger and handoff
-Results are recorded in `.guard/` (git-ignored), so repeated runs are cheap and a new session starts with the
-current state instead of rediscovering it.
-
-- `status/<module>.json`: the latest result of each gate, with the hash of the files it ran against.
-- `runs/<module>.jsonl`: the last 200 gate runs.
-- `handoff/<module>.md`: generated from git and the ledger only. It covers plan and approval state, files in and
-  out of scope, gate results, scenario coverage, the last failure and the next step. Notes from an agent appear
-  in a separate section marked "claims, not verified".
-
-A passing command is skipped while the files it ran against are unchanged. A failing command always reruns.
-`--final` ignores the cache and is the only result that counts as done. Stored output is limited to the last
-20 lines, with tokens, cookies, passwords and authorization values redacted.
-
-### Agent hooks
-The hooks in `.claude/settings.json` are thin wrappers around the same scripts:
-
-| Hook | Behaviour |
-|---|---|
-| Session start | Prints the active module's handoff into the new session |
-| Before an edit | Denies edits to files outside the approved plan, to approval stamps and the ledger, and to guard files unless a workflow plan lists them; denies on any internal error |
-| Before a shell command | Denies running `approve-plan` or writing approval stamps |
-| Stop | When files changed, runs the gates and blocks the stop with the failing gate's summary |
-
-Agents that do not load these hooks follow the same loop by running the scripts directly, starting from
-`.guard/handoff/<module>.md`.
-
-## Limits of the controls
-The gates catch drift and mistakes: scope creep, unverified claims of completion, missing scenario coverage and
-lost state between sessions. They are not tamper-proof. A shell can imitate a terminal and an approval stamp is a
-file, so the final authority is human review of every pull request, including `plans/*.approved.json`,
-`scripts/guard/` and `.claude/`.
+The full rules are 24–29 in [docs/security/rules.md](docs/security/rules.md); the reasoning behind the order is in
+[docs/security/request-flow.md](docs/security/request-flow.md).
 
 ## Getting started
-1. Read [AGENTS.md](AGENTS.md), then [docs/modules/01-setup.md](docs/modules/01-setup.md).
-2. Write `plans/01-setup.md` and check it: `node scripts/guard/check-plan.mjs plans/01-setup.md`
-3. Approve it in a terminal: `node scripts/guard/approve-plan.mjs plans/01-setup.md`
-4. Build, then finish with `node scripts/guard/run.mjs --final`.
+1. Read [AGENTS.md](AGENTS.md), then [docs/modules/README.md](docs/modules/README.md) for the build order.
+2. Start with [docs/modules/01-setup.md](docs/modules/01-setup.md).
 
-Requires Node.js 24 and git. The guard scripts have no dependencies.
+Requires Node.js 24, Docker and git.

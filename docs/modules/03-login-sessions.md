@@ -17,7 +17,7 @@
 8. `proxy.ts`: redirect to `/login` if no cookie. Exclude `/api/files` from the matcher (rule 12)
 
 ## Rules
-5, 8, 9, 10, 12 in [security/rules.md](../security/rules.md)
+5, 8, 9, 10, 12, 24, 25 in [security/rules.md](../security/rules.md)
 
 ## Scenarios
 H2, H3, H6, F3 (DB down), F6 (login burst), E2 (timing), E6 (role change mid-session), E7 (expired rows), E8 (logout CSRF), B2, B3

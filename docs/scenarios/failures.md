@@ -30,3 +30,9 @@
 - **F10. Compromised or vulnerable dependency**
   - **Proposal:** lockfile committed, `npm ci` in CI, `npm audit --audit-level=high` gate, every new dependency justified in the PR
   - **Test:** CI job fails when audit reports a high-severity advisory
+- **F11. A dependency is down at startup or deploy** — database unreachable, migrations behind, `STORAGE_DIR` not writable
+  - **Proposal:** a readiness check over all three; `GET /api/health` returns 503 with no detail until they pass, so the instance takes no traffic (rule 28)
+  - **Test:** stop the database → `/api/health` is 503 and its body names nothing; restore it → 200
+- **F12. A dependency is slow** — a hung query or storage call holds the request and a pool connection
+  - **Proposal:** `statement_timeout`, a pool connection timeout and a storage operation timeout; on timeout return 503 with `Retry-After` and roll back
+  - **Test:** a query that sleeps past the timeout → 503 within the bound, no row written, the pool connection is released

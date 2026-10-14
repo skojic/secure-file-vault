@@ -22,6 +22,7 @@
 - **Auth:** generic login error · dummy verify on unknown user · disabled user loses session · logout is POST only
 - **Upload:** `MAX` ok · `MAX+1` rejected with and without `Content-Length` · spoofed type rejected · abort leaves nothing · foreign `Origin` rejected
 - **Config:** missing env var fails with its name, not its value
+- **Requests:** same key twice → one effect, same result · same key, different request or user → 422 · stale `updated_at` → 409 · dependency down or past its timeout → 503 and nothing written
 
 ## Commands
 - `npm test` — unit + integration

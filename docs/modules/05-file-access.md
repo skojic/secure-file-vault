@@ -15,7 +15,7 @@
 6. Log denied attempts (user id, file id) for the audit trail
 
 ## Rules
-1–5, 19–21, 23 in [security/rules.md](../security/rules.md)
+1–5, 19–21, 23, 24 in [security/rules.md](../security/rules.md)
 
 ## Scenarios
 H5, F2 (row without blob), E16 (bad UUID), E17 (HEAD and Range), E18 (disabled uploader), B4

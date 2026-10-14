@@ -34,3 +34,11 @@ Summarised in [AGENTS.md](../../AGENTS.md). If the two disagree, this file wins.
 ## Configuration and logging
 22. `src/env.ts` is the only reader of `process.env`, validated with Zod at startup. Secrets live in `.env.local`; `.env.example` lists every key with dummy values.
 23. Logs are structured and redact `password`, `cookie`, `authorization` and bodies. Denied file access is logged as user id + file id, nothing else.
+
+## Request guardrails (details and order in [request-flow.md](request-flow.md))
+24. Every request passes the gates in order: shape → identity → authorization → duplicate → dependencies → effect. No gate runs before the previous one passed.
+25. Parse params, headers and body with an explicit Zod schema at the route or Server Action boundary. Write only named fields; never spread request input into a database write.
+26. Actions that create something or cannot be undone require an `Idempotency-Key` (UUID). The service claims it in `idempotency_keys` before any effect: same request → the stored result with no second effect; still in progress → 409; a different request or user → 422. A failed effect releases the key. Keys expire after 24 hours.
+27. Irreversible changes to an existing record (delete a file, disable a user, change a role) carry the `updated_at` the user saw. A mismatch returns 409 and changes nothing.
+28. The app reports ready only when the database answers, migrations are current and `STORAGE_DIR` is writable. Every database and storage call has a timeout. A dependency failure returns 503 with `Retry-After` (507 for full storage), never a partial write, and the server never retries a non-idempotent effect.
+29. Client-side checks (disabled submit, client validation, size and type pre-checks, confirm dialogs) are convenience only. The server repeats every one of them.
