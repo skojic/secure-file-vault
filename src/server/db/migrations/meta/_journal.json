@@ -15,6 +15,13 @@
       "when": 1792000378209,
       "tag": "0001_idempotency_keys",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1792000692200,
+      "tag": "0002_sessions_rate_limits",
+      "breakpoints": true
     }
   ]
 }

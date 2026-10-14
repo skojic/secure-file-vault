@@ -5,13 +5,14 @@ import { db } from "@/server/db/client";
 import { users } from "@/server/db/schema";
 import { resetTables } from "../setup/reset";
 
-const seed = (vars: Record<string, string | undefined>) =>
+const seed = (vars: Record<string, string>) =>
   spawnSync("npm", ["run", "--silent", "db:seed"], {
     env: {
       ...process.env,
-      SEED_ADMIN_NAME: undefined,
-      SEED_ADMIN_USERNAME: undefined,
-      SEED_ADMIN_PASSWORD: undefined,
+      // Empty, not unset: --env-file-if-exists never overrides a variable that is already set.
+      SEED_ADMIN_NAME: "",
+      SEED_ADMIN_USERNAME: "",
+      SEED_ADMIN_PASSWORD: "",
       ...vars,
     },
     encoding: "utf8",
@@ -33,7 +34,7 @@ describe("admin seed", () => {
   }, 60_000);
 
   it("F8: without SEED_ADMIN_PASSWORD the seed exits non-zero and creates nothing", async () => {
-    const run = seed({ ...admin, SEED_ADMIN_PASSWORD: undefined });
+    const run = seed({ ...admin, SEED_ADMIN_PASSWORD: "" });
     expect(run.status).not.toBe(0);
     expect(`${run.stdout}${run.stderr}`).toMatch(/SEED_ADMIN_PASSWORD/);
     expect(await db.select().from(users)).toHaveLength(0);

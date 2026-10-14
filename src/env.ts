@@ -12,6 +12,14 @@ const schema = z.object({
   ARGON2_MAX_CONCURRENCY: z.coerce.number().int().min(1).max(64).default(4),
   // decisions/08: open or closed self-registration (invite codes are not built yet).
   REGISTRATION_MODE: z.enum(["open", "closed"]).default("open"),
+  // Sessions: server-side lifetime, extended when less than half remains (B3).
+  SESSION_TTL_SECONDS: z.coerce.number().int().min(300).default(43200),
+  // Login rate limits per fixed window (decisions/09, F6).
+  LOGIN_LIMIT_PER_USERNAME: z.coerce.number().int().min(1).default(10),
+  LOGIN_LIMIT_PER_IP: z.coerce.number().int().min(1).default(50),
+  LOGIN_WINDOW_SECONDS: z.coerce.number().int().min(10).default(300),
+  // Trust X-Forwarded-For only behind a known proxy; otherwise the per-IP limit is skipped.
+  TRUST_PROXY_HEADERS: z.enum(["true", "false"]).default("false").transform((v) => v === "true"),
   // Read only by scripts/seed.ts, which checks they are present (F8).
   SEED_ADMIN_NAME: z.string().optional(),
   SEED_ADMIN_USERNAME: z.string().optional(),
