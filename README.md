@@ -1,14 +1,23 @@
 # Secure File Vault
 
-A blueprint for a secure file upload module in a full-stack Next.js (TypeScript) and PostgreSQL app:
+A secure file upload module in a full-stack Next.js (TypeScript) and PostgreSQL app:
 registration, login with database sessions, file uploads, and owner-or-admin access to every file.
 
-The repository is the specification. The application is built from these documents one module at a time,
-and every request it serves passes the same ordered set of guardrails.
+The repository holds the specification and the application built from it, one module at a time.
+Every request the application serves passes the same ordered set of guardrails.
 
 ## What is in the repository
 
 ```
+src/
+  app/                     pages, Server Actions and route handlers (thin)
+  server/                  services, policy, sessions, storage, database (server-only)
+  lib/                     helpers and schemas shared by the browser and the server
+  env.ts                   the only reader of the environment
+  proxy.ts                 optimistic redirects; not a security boundary
+scripts/                   migrate, seed the first admin, sweep abandoned uploads
+docker-compose.yml         PostgreSQL 17
+.github/                   CI workflow, pull request template, code owners
 AGENTS.md                  rules for every contributor and coding agent (start here)
 CLAUDE.md                  agent entry point; imports AGENTS.md
 docs/
@@ -102,7 +111,15 @@ The full rules are 24–29 in [docs/security/rules.md](docs/security/rules.md); 
 [docs/security/request-flow.md](docs/security/request-flow.md).
 
 ## Getting started
-1. Read [AGENTS.md](AGENTS.md), then [docs/modules/README.md](docs/modules/README.md) for the build order.
-2. Start with [docs/modules/01-setup.md](docs/modules/01-setup.md).
-
 Requires Node.js 24, Docker and git.
+
+```
+cp .env.example .env.local          # then set SEED_ADMIN_PASSWORD to a long passphrase
+docker compose up -d --wait         # PostgreSQL on 127.0.0.1:5433
+npm ci && mkdir -p storage
+npm run db:migrate && npm run db:seed
+npm run dev                         # http://localhost:3000
+```
+
+`GET /api/health` returns 200 once the database is migrated and `storage/` is writable.
+Before changing anything, read [AGENTS.md](AGENTS.md) and [docs/modules/README.md](docs/modules/README.md).

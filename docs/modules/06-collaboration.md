@@ -8,7 +8,7 @@
 
 ## Steps
 1. README: prerequisites, `cp .env.example .env.local`, `docker compose up -d`, `npm run db:migrate`, `npm run dev`
-2. CI on every PR: install from lockfile, lint, typecheck, test against a Postgres service container, `npm audit --audit-level=high`
+2. CI on every PR: install from lockfile, `npm audit --omit=dev --audit-level=high` (runtime tree gated; dev advisories reported, because braces 3.0.3 via eslint-config-next has no fixed release), lint, typecheck, migrate an empty database, test against a Postgres service container, build, Playwright end to end. Actions pinned to commit SHAs
 3. PR template: what changed, scenario IDs covered, how it was verified (paste output), new dependencies and why
 4. CODEOWNERS: require a reviewer for `src/server/auth/` and `src/server/files/policy.ts`
 5. Update AGENTS.md "Commands" whenever a script changes

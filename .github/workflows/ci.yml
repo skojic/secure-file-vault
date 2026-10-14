@@ -1,0 +1,87 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+# Read-only token: this workflow only checks code.
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: vault
+          POSTGRES_PASSWORD: vault-ci-only
+          POSTGRES_DB: secure_file_vault
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U vault -d secure_file_vault"
+          --health-interval 2s
+          --health-timeout 3s
+          --health-retries 30
+    env:
+      DATABASE_URL: postgres://vault:vault-ci-only@localhost:5432/secure_file_vault
+      DATABASE_URL_TEST: postgres://vault:vault-ci-only@localhost:5432/secure_file_vault_test
+    steps:
+      # Actions are pinned to a commit, not a movable tag (F10).
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - name: Install from the lockfile
+        run: npm ci
+
+      # Runtime dependencies must have no high-severity advisory. Dev-only tooling is reported, not
+      # gated: braces 3.0.3 (via eslint-config-next) has no fixed release.
+      - name: Audit runtime dependencies
+        run: npm audit --omit=dev --audit-level=high
+
+      - name: Report dev dependency advisories
+        run: npm audit --audit-level=high || true
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      # F7: migrations run as their own step, on an empty database.
+      - name: Migrate an empty database
+        run: npm run db:migrate
+
+      - name: Unit and integration
+        run: npm test
+
+      - name: Build
+        run: npm run build
+
+      - name: Install the browser
+        run: npx playwright install --with-deps chromium
+
+      - name: End to end
+        run: npm run test:e2e
+
+      - name: Keep the browser traces of a failed run
+        if: failure()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: playwright-traces
+          path: test-results/
+          retention-days: 7

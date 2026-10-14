@@ -57,7 +57,7 @@ Route handlers and Server Actions never touch the database or storage directly.
 - `npm run db:generate` / `npm run db:migrate` — migrations
 - `npm run db:seed` — first admin from env vars
 - `npm run files:sweep` — delete uploads stuck in `pending` (schedule it)
-- `npm run lint` · `npm run typecheck` · `npm test` · `npm run test:e2e`
+- `npm run lint` · `npm run typecheck` · `npm test` · `npm run build` then `npm run test:e2e`
 
 ## Hard limits
 - No new dependency without a reason in the PR description.

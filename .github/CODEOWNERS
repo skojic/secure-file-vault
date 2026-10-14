@@ -1,0 +1,11 @@
+# Changes here need a review from a code owner once branch protection requires it
+# (Settings → Branches → Require review from Code Owners).
+*                                   @skojic
+
+/src/server/auth/                   @skojic
+/src/server/files/policy.ts         @skojic
+/src/server/files/upload.ts         @skojic
+/src/server/idempotency.ts          @skojic
+/src/app/api/files/                 @skojic
+/docs/security/                     @skojic
+/.github/                           @skojic
