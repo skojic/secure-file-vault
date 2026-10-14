@@ -9,7 +9,9 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
     <html lang="en">
-      <body>{children}</body>
+      {/* Browser extensions (e.g. cz-shortcut-listen) add attributes to <body> before React loads.
+          This silences mismatches on <body>'s own attributes only; its children are still checked. */}
+      <body suppressHydrationWarning>{children}</body>
     </html>
   );
 }
