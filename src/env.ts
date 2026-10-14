@@ -8,6 +8,14 @@ const schema = z.object({
   DB_POOL_MAX: z.coerce.number().int().min(1).max(100).default(10),
   DB_CONNECT_TIMEOUT_MS: z.coerce.number().int().min(100).default(5000),
   DB_STATEMENT_TIMEOUT_MS: z.coerce.number().int().min(100).default(10000),
+  // Each argon2id hash holds 19 MiB; this caps how many run at once (F6, B2).
+  ARGON2_MAX_CONCURRENCY: z.coerce.number().int().min(1).max(64).default(4),
+  // decisions/08: open or closed self-registration (invite codes are not built yet).
+  REGISTRATION_MODE: z.enum(["open", "closed"]).default("open"),
+  // Read only by scripts/seed.ts, which checks they are present (F8).
+  SEED_ADMIN_NAME: z.string().optional(),
+  SEED_ADMIN_USERNAME: z.string().optional(),
+  SEED_ADMIN_PASSWORD: z.string().optional(),
 });
 
 export type Env = z.infer<typeof schema>;

@@ -10,9 +10,11 @@
     "typecheck": "next typegen && tsc --noEmit",
     "test": "vitest run",
     "db:generate": "drizzle-kit generate",
-    "db:migrate": "node --env-file-if-exists=.env.local --conditions=react-server --import tsx scripts/migrate.ts"
+    "db:migrate": "node --env-file-if-exists=.env.local --conditions=react-server --import tsx scripts/migrate.ts",
+    "db:seed": "node --env-file-if-exists=.env.local --conditions=react-server --import tsx scripts/seed.ts"
   },
   "dependencies": {
+    "@node-rs/argon2": "2.2.2",
     "drizzle-orm": "0.45.4",
     "next": "16.4.0",
     "pg": "8.23.1",
