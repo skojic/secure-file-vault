@@ -43,7 +43,7 @@ or where it does not. List any scenario ID from the module file that has no test
 - Do the tests fail when the rule is broken? Break it once and see
 
 ## Failure modes of agent-assisted work, and the counter
-- **Plausible API that does not exist** → require the agent to cite `node_modules` path or a versioned doc URL
+- **Plausible API that does not exist** → require the agent to cite a `node_modules` path or a versioned doc URL
 - **Training-data Next.js** (e.g. `middleware.ts`, sync `cookies()`) → read `node_modules/next/dist/docs/` first; Next.js 16 renamed Middleware to Proxy
 - **Scope creep** → one module per session; reject diffs outside the plan
 - **"Tests pass" without a run** → no output quoted means not done
